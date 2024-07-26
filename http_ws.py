@@ -35,13 +35,13 @@ ip_cam = {}
 induction_cam = {}
 
 for cam in cams["cams"]:
-    ip_cam[cam["camIP"]] = cam
+    ip_cam[(cam["camIP"], cam["port"])] = cam
 
-    keys = list(cam.keys())
-    for i in range(2, len(keys)):
-        key = keys[i]
-        cam[key].append('')
-        induction_cam[(key, cam[key][0])] = cam
+    inductions = cam["inductions"]
+    inductions_IPs = inductions.keys()
+    for IP in inductions_IPs:
+        inductions[IP].append('')
+        induction_cam[(IP, inductions[IP][0])] = cam
 
 
 file_p = "./package2chute.txt"
@@ -121,8 +121,8 @@ class MyHTTPRequestHandler(BaseHTTPRequestHandler):
             if(data['messageCode'] == 'ROBOTSTATUSUPDATE'):
 
                 cam = induction_cam[(client_ip, data['currentLocationId'])]
-                assert cam[client_ip][0] == data['currentLocationId']
-                cam[client_ip][1] = data['robotId']
+                assert cam["inductions"][client_ip][0] == data['currentLocationId']
+                cam["inductions"][client_ip][1] = data['robotId']
 
         else:
             print("get unknown message:", data)
@@ -206,14 +206,14 @@ def tcp_client(server_host = '127.0.0.1', server_port = 9004):
 
                     dst_ip = package2chute[data][0]
 
-                    cam = ip_cam[server_host]
-                    sortResponse['payload']['stationId'] = cam[dst_ip][0]
+                    cam = ip_cam[(server_host, server_port)]
+                    sortResponse['payload']['stationId'] = cam["inductions"][dst_ip][0]
 
-                    if(len(cam[dst_ip]) < 2 or cam[dst_ip][1] == ''):
-                        print("No robot at induction: ", dst_ip, cam[dst_ip][0])
+                    if(len(cam["inductions"][dst_ip]) < 2 or cam["inductions"][dst_ip][1] == ''):
+                        print("No robot at induction: ", dst_ip, cam["inductions"][dst_ip][0], "\n")
                         continue
 
-                    sortResponse['payload']['robotId'] = cam[dst_ip][1]
+                    sortResponse['payload']['robotId'] = cam["inductions"][dst_ip][1]
                     if(mode == 'sort'):
                         sortResponse['payload']['destinationId'] = package2chute[data][1]
                     else:
