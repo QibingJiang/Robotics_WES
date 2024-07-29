@@ -5,7 +5,7 @@
             "port": 2111,
             "inductions": {
                 "192.168.12.116": ["LABZLIFT_UL"],
-                "192.168.12.113": ["LABZLIFT_LL"]
+                "192.168.12.103": ["LABZLIFT_LL"]
             }
         },
         {
@@ -13,7 +13,7 @@
             "port": 9004,
             "inductions": {
                 "192.168.12.116": ["LABZLIFT_UR"],
-                "192.168.12.113": ["LABZLIFT_LR"]
+                "192.168.12.103": ["LABZLIFT_LR"]
             }
         }
     ]
