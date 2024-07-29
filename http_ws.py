@@ -122,7 +122,7 @@ class MyHTTPRequestHandler(BaseHTTPRequestHandler):
 
                 cam = induction_cam[(client_ip, data['currentLocationId'])]
                 assert cam["inductions"][client_ip][0] == data['currentLocationId']
-                cam["inductions"][client_ip][1] = data['robotId']
+                cam["inductions"][client_ip][1] = data['robotId'] #cam["inductions"][dst_ip][1] == ''
 
         else:
             print("get unknown message:", data)
@@ -165,6 +165,28 @@ async def send_websocket_message(message, websocket):
         await websocket.send(json.dumps(message).encode())
     except Exception as e:
         print(f"Failed to send message: {e}")
+
+
+def start_server(host, port, interval):
+    # host = '127.0.0.1'
+    # port = 12345
+
+    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_socket.bind((host, port))
+    server_socket.listen(1)
+
+    print(f"TCP Server listening on {host}:{port}")
+
+    while True:
+        conn, addr = server_socket.accept()
+        print(f"Connected by {addr}")
+
+        # threading
+
+
+
+    server_socket.close()
+
 
 
 def tcp_client(server_host = '127.0.0.1', server_port = 9004):
@@ -223,6 +245,8 @@ def tcp_client(server_host = '127.0.0.1', server_port = 9004):
 
                     asyncio.run(send_websocket_message(sortResponse, ws_clients[dst_ip]))
 
+                    cam["inductions"][dst_ip][1] = ''
+
 
         # except Exception as e:
         #     print(f"Error: {server_host} {server_port} {e}")
@@ -230,33 +254,39 @@ def tcp_client(server_host = '127.0.0.1', server_port = 9004):
 
 
 def main():
-    # Start HTTP server in a separate thread
+    while True:
+        try:
+            # Start HTTP server in a separate thread
 
-    host = '192.168.12.116'
-    port = 8080
+            host = '192.168.12.116'
+            port = 8080
 
-    http_thread = threading.Thread(target=start_http_server, args=(host, port))
-    http_thread.start()
+            http_thread = threading.Thread(target=start_http_server, args=(host, port))
+            http_thread.start()
 
-    # Start WebSocket server in a separate thread
-    # asyncio.run(start_websocket_server())
+            # Start WebSocket server in a separate thread
+            # asyncio.run(start_websocket_server())
 
-    host = '192.168.12.116'
-    port = 9765
+            host = '192.168.12.116'
+            port = 9765
 
-    ws_thread = threading.Thread(target=start_websocket_server_in_thread, args=(host, port))
-    ws_thread.start()
+            ws_thread = threading.Thread(target=start_websocket_server_in_thread, args=(host, port))
+            ws_thread.start()
 
-    # Start TCP clients in a separate thread
-    for i in range(len(cams["cams"]) - 1):
-        tcp_client_thread = threading.Thread(target=tcp_client, args=(cams["cams"][i]["camIP"], cams["cams"][i]["port"]))
-        tcp_client_thread.start()
+            # Start TCP clients in a separate thread
+            for i in range(len(cams["cams"]) - 1):
+                tcp_client_thread = threading.Thread(target=tcp_client, args=(cams["cams"][i]["camIP"], cams["cams"][i]["port"]))
+                tcp_client_thread.start()
 
-    tcp_client(cams["cams"][-1]["camIP"], cams["cams"][-1]["port"])
+            tcp_client(cams["cams"][-1]["camIP"], cams["cams"][-1]["port"])
 
-    # Optionally, join threads to wait for completion
-    # http_thread.join()
-    # tcp_client_thread.join()
+            # Optionally, join threads to wait for completion
+            # http_thread.join()
+            # tcp_client_thread.join()
+        except Exception as e:
+            print("Error: ", e)
+            print("Restart Http server, Web socket, and TCP server ")
+            time.sleep(1)
 
 if __name__ == "__main__":
     main()
