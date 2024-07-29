@@ -66,7 +66,7 @@ class MyHTTPRequestHandler(BaseHTTPRequestHandler):
         self.wfile.write(b"Hello, this is the HTTP server!")
 
     def do_POST(self):
-        print("Http server get post")
+        # print("Http server get post")
 
         # Get client IP address
         client_ip, client_port = self.client_address
