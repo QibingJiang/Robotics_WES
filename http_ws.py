@@ -9,6 +9,7 @@ import threading
 import random
 import socket
 import os
+import re
 
 # class RCS:
 #     def __init__(self):
@@ -27,15 +28,24 @@ if(os.path.exists('./RCSs_for_random_sort.txt')):
 ws_clients = {} # IP to websocket clients
 # clients["127.0.0.1"] = RCS_a
 
-file_1 = open('cam_config.txt', 'r')
+file_1 = open('cam_client.txt', 'r')
 cam_config = file_1.read()
 cams = json.loads(cam_config)
 
 ip_cam = {}
 induction_cam = {}
 
+# for cam in cams["cams"]:
+#     ip_cam[(cam["camIP"], cam["port"])] = cam
+#
+#     inductions = cam["inductions"]
+#     inductions_IPs = inductions.keys()
+#     for IP in inductions_IPs:
+#         inductions[IP].append('')
+#         induction_cam[(IP, inductions[IP][0])] = cam
+
 for cam in cams["cams"]:
-    ip_cam[(cam["camIP"], cam["port"])] = cam
+    ip_cam[cam["camIP"]] = cam
 
     inductions = cam["inductions"]
     inductions_IPs = inductions.keys()
@@ -166,27 +176,73 @@ async def send_websocket_message(message, websocket):
     except Exception as e:
         print(f"Failed to send message: {e}")
 
-
-def start_server(host, port, interval):
-    # host = '127.0.0.1'
-    # port = 12345
-
-    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_socket.bind((host, port))
-    server_socket.listen(1)
-
-    print(f"TCP Server listening on {host}:{port}")
-
+def handle_client(conn, addr):
+    print(f"Connected by {addr}")
+    client_ip, client_port = addr
     while True:
-        conn, addr = server_socket.accept()
-        print(f"Connected by {addr}")
+        data = conn.recv(1024)  # Buffer size is 1024 bytes
+        if not data:
+            break
+        data = data.decode()
+        data = re.sub(r"[\x02\r\n\s]", "", data)
+        print(f"Received from {addr}: {data}")
+        src2dst(data, client_ip, client_port)
+        # conn.sendall(data)  # Echo the received data back to the client
+    conn.close()
 
-        # threading
+def start_TCP_server(HOST, PORT):
+    # Create a socket object
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
+        server_socket.bind((HOST, PORT))
+        server_socket.listen()
 
+        print(f"Server started. Listening on {HOST}:{PORT}")
 
+        while True:
+            conn, addr = server_socket.accept()
+            # Start a new thread to handle the client
+            client_thread = threading.Thread(target=handle_client, args=(conn, addr))
+            client_thread.start()
 
-    server_socket.close()
+def src2dst(data, cam_ip, cam_port):
+    sortResponse = {
+        "status": "success",
+        "statusCode": 0,
+        "statusDesc": "Message Processed Successfully",
+        "messageNumber": "1",
+        "payload": {
+            "messageCode": "SORTRESPONSE",
+            "stationId": "",  # Station2U
+            "robotId": "",  # "1"
+            "systemAction": 1,
+            "userAction": "",
+            "userMessage": "",
+            "destinationId": "",
+            "productCode": "750000007515",
+            "sku": ""
+        }
+    }
 
+    dst_ip = package2chute[data][0]
+
+    # cam = ip_cam[(cam_ip, cam_port)]
+    cam = ip_cam[cam_ip]
+    sortResponse['payload']['stationId'] = cam["inductions"][dst_ip][0]
+
+    if (len(cam["inductions"][dst_ip]) < 2 or cam["inductions"][dst_ip][1] == ''):
+        print("No robot at induction: ", dst_ip, cam["inductions"][dst_ip][0], "\n")
+    else:
+        sortResponse['payload']['robotId'] = cam["inductions"][dst_ip][1]
+        if (mode == 'sort'):
+            sortResponse['payload']['destinationId'] = package2chute[data][1]
+        else:
+            sortResponse['payload']['destinationId'] = random.choice(IP2chutes[dst_ip])
+
+        print(sortResponse)
+
+        asyncio.run(send_websocket_message(sortResponse, ws_clients[dst_ip]))
+
+        cam["inductions"][dst_ip][1] = ''
 
 
 def tcp_client(server_host = '127.0.0.1', server_port = 9004):
@@ -206,47 +262,10 @@ def tcp_client(server_host = '127.0.0.1', server_port = 9004):
                         # time.sleep(1)
                         # continue
                     data = data.decode()
+                    data = re.sub(r"[\x02\r\n\s]", "", data)
                     print(f"Received from {server_host} {server_port}: {data}\n")
 
-                    sortResponse = {
-                        "status": "success",
-                        "statusCode": 0,
-                        "statusDesc": "Message Processed Successfully",
-                        "messageNumber": "1",
-                        "payload": {
-                            "messageCode": "SORTRESPONSE",
-                            "stationId": "",  # Station2U
-                            "robotId": "",  # "1"
-                            "systemAction": 1,
-                            "userAction": "",
-                            "userMessage": "",
-                            "destinationId": "",
-                            "productCode": "750000007515",
-                            "sku": ""
-                        }
-                    }
-
-                    dst_ip = package2chute[data][0]
-
-                    cam = ip_cam[(server_host, server_port)]
-                    sortResponse['payload']['stationId'] = cam["inductions"][dst_ip][0]
-
-                    if(len(cam["inductions"][dst_ip]) < 2 or cam["inductions"][dst_ip][1] == ''):
-                        print("No robot at induction: ", dst_ip, cam["inductions"][dst_ip][0], "\n")
-                        continue
-
-                    sortResponse['payload']['robotId'] = cam["inductions"][dst_ip][1]
-                    if(mode == 'sort'):
-                        sortResponse['payload']['destinationId'] = package2chute[data][1]
-                    else:
-                        sortResponse['payload']['destinationId'] = random.choice(IP2chutes[dst_ip])
-
-                    print(sortResponse)
-
-                    asyncio.run(send_websocket_message(sortResponse, ws_clients[dst_ip]))
-
-                    cam["inductions"][dst_ip][1] = ''
-
+                    src2dst(data, server_host, server_port)
 
         # except Exception as e:
         #     print(f"Error: {server_host} {server_port} {e}")
@@ -267,19 +286,13 @@ def main():
             # Start WebSocket server in a separate thread
             # asyncio.run(start_websocket_server())
 
-            host = '192.168.12.116'
+            # host = '192.168.12.116'
             port = 9765
 
             ws_thread = threading.Thread(target=start_websocket_server_in_thread, args=(host, port))
             ws_thread.start()
 
-            # Start TCP clients in a separate thread
-            for i in range(len(cams["cams"]) - 1):
-                tcp_client_thread = threading.Thread(target=tcp_client, args=(cams["cams"][i]["camIP"], cams["cams"][i]["port"]))
-                tcp_client_thread.start()
-
-            tcp_client(cams["cams"][-1]["camIP"], cams["cams"][-1]["port"])
-
+            start_TCP_server(host, 3213)
             # Optionally, join threads to wait for completion
             # http_thread.join()
             # tcp_client_thread.join()
