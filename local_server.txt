@@ -1,0 +1,6 @@
+{
+    "ip": "192.168.12.116",
+    "tcp_port": 9004,
+    "http_port": 8080,
+    "web_socket_port": 9765
+}
