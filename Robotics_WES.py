@@ -130,9 +130,12 @@ class MyHTTPRequestHandler(BaseHTTPRequestHandler):
 
             if(data['messageCode'] == 'ROBOTSTATUSUPDATE'):
 
-                cam = induction_cam[(client_ip, data['currentLocationId'])]
-                assert cam["inductions"][client_ip][0] == data['currentLocationId']
-                cam["inductions"][client_ip][1] = data['robotId'] #cam["inductions"][dst_ip][1] == ''
+                if((client_ip, data['currentLocationId']) in induction_cam):
+                    cam = induction_cam[(client_ip, data['currentLocationId'])]
+                    assert cam["inductions"][client_ip][0] == data['currentLocationId']
+                    cam["inductions"][client_ip][1] = data['robotId'] #cam["inductions"][dst_ip][1] == ''
+                else:
+                    print("No camera is specified for ", client_ip, data['currentLocationId'])
 
         else:
             print("get unknown message:", data)
@@ -201,7 +204,7 @@ def handle_TCP_client(conn, addr):
                 break
             data = data.decode()
             data = re.sub(r"[\x02\r\n\s]", "", data)
-            data = data[5:-3]
+            # data = data[5:-3]
             print(f"Received from {addr}: {data}")
             src2dst(data, client_ip, client_port)
             # conn.sendall(data)  # Echo the received data back to the client
@@ -243,11 +246,26 @@ def src2dst(data, cam_ip, cam_port):
         }
     }
 
+    # cam = ip_cam[(cam_ip, cam_port)]
+    cam = ip_cam[cam_ip]
+
+    s = 0
+    e = len(data)
+
+    if("prefix" in cam):
+        prefix = re.sub(r"[\x02\r\n\s]", "", cam["prefix"])
+        s = len(prefix)
+
+    if("suffix" in cam):
+        suffix = re.sub(r"[\x02\r\n\s]", "", cam["suffix"])
+        e = len(data) - len(suffix)
+
+    data = data[s:e]
+
     if(data in package2chute):
+
         dst_ip = package2chute[data][0]
 
-        # cam = ip_cam[(cam_ip, cam_port)]
-        cam = ip_cam[cam_ip]
         sortResponse['payload']['stationId'] = cam["inductions"][dst_ip][0]
 
         if (len(cam["inductions"][dst_ip]) < 2 or cam["inductions"][dst_ip][1] == ''):
