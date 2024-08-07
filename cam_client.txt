@@ -2,6 +2,8 @@
     "cams": [
         {
             "camIP": "192.168.12.101",
+            "prefix": "04mm\t",
+            "suffix": "",
             "inductions": {
                 "192.168.12.116": ["LABZLIFT_UL"],
                 "192.168.12.103": ["LABZLIFT_LL"]
@@ -9,6 +11,8 @@
         },
         {
             "camIP": "192.168.12.116",
+            "prefix": "04mm\t",
+            "suffix": "",
             "inductions": {
                 "192.168.12.116": ["LABZLIFT_UR"],
                 "192.168.12.103": ["LABZLIFT_LR"]
