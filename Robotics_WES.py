@@ -194,24 +194,33 @@ async def send_websocket_message(message, websocket):
     except Exception as e:
         print(f"Failed to send message: {e}")
 
+KEEP_ALIVE_INTERVAL = 600  # Adjust this as needed
+
 def handle_TCP_client(conn, addr):
     print(f"TCP Server Connected by {addr}")
     client_ip, client_port = addr
-    try:
-        while True:
+    conn.settimeout(KEEP_ALIVE_INTERVAL)  # Set a timeout for the connection
+
+    while True:
+        try:
             data = conn.recv(1024)  # Buffer size is 1024 bytes
             if not data:
                 break
-            data = data.decode()
-            data = re.sub(r"[\x02\r\n\s]", "", data)
-            # data = data[5:-3]
-            print(f"Received from {addr}: {data}")
-            src2dst(data, client_ip, client_port)
-            # conn.sendall(data)  # Echo the received data back to the client
 
-    except Exception as e:
-        print(f"TCP client failed: {e}")
-        conn.close()
+        except socket.timeout:
+            # Handle keep-alive timeout
+            print(f"Connection to {addr} timed out, TCP connection is closing.")
+            conn.close()
+            break
+
+        data = data.decode()
+        data = re.sub(r"[\x02\r\n\s]", "", data)
+        # data = data[5:-3]
+        print(f"Received from {addr}: {data}")
+        # conn.sendall(data)  # Echo the received data back to the client
+
+        src2dst(data, client_ip, client_port)
+
 
 def start_TCP_server(HOST, PORT):
     # Create a socket object
@@ -222,10 +231,14 @@ def start_TCP_server(HOST, PORT):
         print(f"TCP Server listening on {HOST}:{PORT}")
 
         while True:
-            conn, addr = server_socket.accept()
-            # Start a new thread to handle the client
-            client_thread = threading.Thread(target=handle_TCP_client, args=(conn, addr))
-            client_thread.start()
+            try:
+                conn, addr = server_socket.accept()
+                # Start a new thread to handle the client
+                client_thread = threading.Thread(target=handle_TCP_client, args=(conn, addr))
+                client_thread.start()
+
+            except Exception as e:
+                print(f"Error accepting connection: {e}")
 
 def src2dst(data, cam_ip, cam_port):
     sortResponse = {
@@ -339,10 +352,18 @@ def main():
             ws_thread = threading.Thread(target=start_websocket_server_in_thread, args=(server_config['ip'], server_config['web_socket_port']))
             ws_thread.start()
 
-            start_TCP_server(server_config['ip'], server_config['tcp_port'])
+            # start_TCP_server(server_config['ip'], server_config['tcp_port'])
+            TCP_server_thread = threading.Thread(target=start_TCP_server, args=(server_config['ip'], server_config['tcp_port']))
+            TCP_server_thread.start()
+
             # Optionally, join threads to wait for completion
             # http_thread.join()
             # tcp_client_thread.join()
+
+            while(True):
+                print("Time Stamp: ", time.strftime("%H:%M:%S", time.localtime()))
+                time.sleep(10)
+
         except Exception as e:
             print("Error: ", e)
             print("Restart Http server, Web socket, and TCP server ")
