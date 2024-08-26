@@ -28,7 +28,7 @@ if(os.path.exists('./RCSs_for_random_sort.txt')):
 ws_clients = {} # IP to websocket clients
 # clients["127.0.0.1"] = RCS_a
 
-file_1 = open('cam_client.txt', 'r')
+file_1 = open('cameras.txt', 'r')
 cam_config = file_1.read()
 cams = json.loads(cam_config)
 
@@ -135,7 +135,8 @@ class MyHTTPRequestHandler(BaseHTTPRequestHandler):
                     assert cam["inductions"][client_ip][0] == data['currentLocationId']
                     cam["inductions"][client_ip][1] = data['robotId'] #cam["inductions"][dst_ip][1] == ''
                 else:
-                    print("No camera is specified for ", client_ip, data['currentLocationId'])
+                    # print("No camera is specified for ", client_ip, data['currentLocationId'])
+                    pass
 
         else:
             print("get unknown message:", data)
@@ -302,29 +303,38 @@ def src2dst(data, cam_ip, cam_port):
 
 def tcp_client(server_host = '127.0.0.1', server_port = 9004):
     while True:
-        # try:
-            # Connect to TCP server
+        try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
                 client_socket.connect((server_host, server_port))
                 print(f"Connected to TCP server at {server_host}:{server_port}\n")
 
-                client_socket.settimeout(None)
+                client_socket.settimeout(KEEP_ALIVE_INTERVAL)
                 while True:
-                    data = client_socket.recv(1024)
-                    if not data:
-                        print("TCP break ", "server_host ", "server_port ")
-                        break
-                        # time.sleep(1)
-                        # continue
-                    data = data.decode()
-                    data = re.sub(r"[\x02\r\n\s]", "", data)
-                    print(f"Received from {server_host} {server_port}: {data}\n")
+                    try:
+                        # Attempt to receive data
+                        data = client_socket.recv(1024)
+                        if not data:  # Connection closed by server
+                            print("Connection closed by the server.", server_host, server_port)
+                            break
+                        data = data.decode()
+                        data = re.sub(r"[\x02\r\n\s]", "", data)
+                        print(f"Received from {server_host} {server_port}: {data}\n")
+                        src2dst(data, server_host, server_port)
 
-                    src2dst(data, server_host, server_port)
+                    except socket.timeout:
+                        print("TCP client keeps receiving data")
+                        # Optionally handle timeout scenario here, e.g., send a heartbeat message
+                    except socket.error as e:
+                        print(f"TCP client socket error: {e}")
+                        break  # Exit inner loop to reconnect
 
-        # except Exception as e:
-        #     print(f"Error: {server_host} {server_port} {e}")
-        #     # Handle exceptions or reconnect logic here if needed
+        except socket.error as e:
+            print(f"TCP client error: {server_host} {server_port} {e}")
+            # Handle exceptions or reconnect logic here if needed
+
+        client_socket.close()
+        print(f"Reconnecting in 1 seconds...")
+        time.sleep(1)
 
 
 def main():
@@ -352,9 +362,19 @@ def main():
             ws_thread = threading.Thread(target=start_websocket_server_in_thread, args=(server_config['ip'], server_config['web_socket_port']))
             ws_thread.start()
 
-            # start_TCP_server(server_config['ip'], server_config['tcp_port'])
-            TCP_server_thread = threading.Thread(target=start_TCP_server, args=(server_config['ip'], server_config['tcp_port']))
-            TCP_server_thread.start()
+            # TCP_server_thread = threading.Thread(target=start_TCP_server, args=(server_config['ip'], server_config['tcp_port']))
+            # TCP_server_thread.start()
+            TCP_server_thread = None
+
+            for cam in cams['cams']:
+                if 'port' in cam: #Camera works as a TCP server.
+                    # print("Try to connect Camera TCP server: ", cam['camIP'], cam['port'])
+                    TCP_client_thread = threading.Thread(target=tcp_client, args=(cam['camIP'], cam['port']))
+                    TCP_client_thread.start()
+                else: # Camera works as a TCP client.
+                    if(TCP_server_thread == None):
+                        TCP_server_thread = threading.Thread(target=start_TCP_server, args=(server_config['ip'], server_config['tcp_port']))
+                        TCP_server_thread.start()
 
             # Optionally, join threads to wait for completion
             # http_thread.join()
