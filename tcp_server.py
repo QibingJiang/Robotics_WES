@@ -21,28 +21,29 @@ def start_server(host, port, interval):
         conn, addr = server_socket.accept()
         print(f"Connected by {addr}")
 
-        # data = conn.recv(1024)
-        # if not data:
-        #     break
-        # else:
-        #     print("TCP server ", host, port, "get: ", data.decode())
+        data = conn.recv(1024)
+        data_de = data.decode()
+        if not data:
+            break
+        else:
+            print("TCP server ", host, port, "get: ", data_de)
 
-        try:
-            while(True):
-                data = random.choice(package_list)
-                conn.sendall(data.encode())
-                print(data)
-                time.sleep(3)
-                # conn.close()
+        # try:
+        #     while(True):
+        #         data = random.choice(package_list)
+        #         conn.sendall(data.encode())
+        #         print(data)
+        #         time.sleep(3)
+        #         # conn.close()
 
-        except socket.timeout:
-            print(f"Connection timeout with {addr}")
-
-        except ConnectionResetError:
-            print(f"Connection reset by {addr}")
-
-        except socket.error as e:
-            print(f"Socket error occurred with {addr}: {e}")
+        # except socket.timeout:
+        #     print(f"Connection timeout with {addr}")
+        #
+        # except ConnectionResetError:
+        #     print(f"Connection reset by {addr}")
+        #
+        # except socket.error as e:
+        #     print(f"Socket error occurred with {addr}: {e}")
 
         # finally:
         #     conn.close()
@@ -56,5 +57,7 @@ def start_server(host, port, interval):
 
 
 if __name__ == "__main__":
-    start_server(sys.argv[1], int(sys.argv[2]), int(sys.argv[3]))  # Run this in one terminal
+    start_server("192.168.12.116", 9004, 3)  # Run this in one terminal
+    # start_server(sys.argv[1], int(sys.argv[2]), int(sys.argv[3]))  # Run this in one terminal
     # start_client()  # Uncomment and run this in another terminal
+    # start_server("192.168.136.253", 9004, 3)  # Run this in one terminal
