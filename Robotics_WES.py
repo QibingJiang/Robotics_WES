@@ -34,7 +34,7 @@ cams = json.loads(cam_config)
 
 ip_cam = {}
 induction_cam = {}
-
+induction_bot = {}
 # for cam in cams["cams"]:
 #     ip_cam[(cam["camIP"], cam["port"])] = cam
 #
@@ -48,10 +48,13 @@ for cam in cams["cams"]:
     ip_cam[cam["camIP"]] = cam
 
     inductions = cam["inductions"]
-    inductions_IPs = inductions.keys()
-    for IP in inductions_IPs:
-        inductions[IP].append('')
-        induction_cam[(IP, inductions[IP][0])] = cam
+    for IP in inductions.keys():
+        # inductions[IP].append('')
+        k = (IP, inductions[IP])
+        if(k not in induction_cam):
+            induction_cam[k] = []
+        induction_cam[k].append(cam)
+
 
 
 file_p = "./package2chute.txt"
@@ -131,9 +134,11 @@ class MyHTTPRequestHandler(BaseHTTPRequestHandler):
             if(data['messageCode'] == 'ROBOTSTATUSUPDATE'):
 
                 if((client_ip, data['currentLocationId']) in induction_cam):
-                    cam = induction_cam[(client_ip, data['currentLocationId'])]
-                    assert cam["inductions"][client_ip][0] == data['currentLocationId']
-                    cam["inductions"][client_ip][1] = data['robotId'] #cam["inductions"][dst_ip][1] == ''
+                    # cam = induction_cam[(client_ip, data['currentLocationId'])]
+                    # assert cam["inductions"][client_ip][0] == data['currentLocationId']
+                    # cam["inductions"][client_ip][1] = data['robotId']
+                    k = (client_ip, data['currentLocationId'])
+                    induction_bot[k] = data['robotId']
                 else:
                     # print("No camera is specified for ", client_ip, data['currentLocationId'])
                     pass
@@ -241,6 +246,65 @@ def start_TCP_server(HOST, PORT):
             except Exception as e:
                 print(f"Error accepting connection: {e}")
 
+# def src2dst(data, cam_ip, cam_port):
+#     sortResponse = {
+#         "status": "success",
+#         "statusCode": 0,
+#         "statusDesc": "Message Processed Successfully",
+#         "messageNumber": "1",
+#         "payload": {
+#             "messageCode": "SORTRESPONSE",
+#             "stationId": "",  # Station2U
+#             "robotId": "",  # "1"
+#             "systemAction": 1,
+#             "userAction": "",
+#             "userMessage": "",
+#             "destinationId": "",
+#             "productCode": "750000007515",
+#             "sku": ""
+#         }
+#     }
+#
+#     # cam = ip_cam[(cam_ip, cam_port)]
+#     cam = ip_cam[cam_ip]
+#
+#     s = 0
+#     e = len(data)
+#
+#     if("prefix" in cam):
+#         prefix = re.sub(r"[\x02\r\n\s]", "", cam["prefix"])
+#         s = len(prefix)
+#
+#     if("suffix" in cam):
+#         suffix = re.sub(r"[\x02\r\n\s]", "", cam["suffix"])
+#         e = len(data) - len(suffix)
+#
+#     data = data[s:e]
+#
+#     if(data in package2chute):
+#
+#         dst_ip = package2chute[data][0]
+#
+#         sortResponse['payload']['stationId'] = cam["inductions"][dst_ip][0]
+#
+#         if (len(cam["inductions"][dst_ip]) < 2 or cam["inductions"][dst_ip][1] == ''):
+#             print("No robot at induction: ", dst_ip, cam["inductions"][dst_ip][0], "\n")
+#         else:
+#             sortResponse['payload']['robotId'] = cam["inductions"][dst_ip][1]
+#             if (mode == 'sort'):
+#                 sortResponse['payload']['destinationId'] = package2chute[data][1]
+#             else:
+#                 sortResponse['payload']['destinationId'] = random.choice(IP2chutes[dst_ip])
+#
+#             print(sortResponse)
+#
+#             asyncio.run(send_websocket_message(sortResponse, ws_clients[dst_ip]))
+#
+#             cam["inductions"][dst_ip][1] = ''
+#     else:
+#         print("Unknown package ID scaned from Camera:", data)
+#         print(package2chute)
+
 def src2dst(data, cam_ip, cam_port):
     sortResponse = {
         "status": "success",
@@ -274,30 +338,33 @@ def src2dst(data, cam_ip, cam_port):
         suffix = re.sub(r"[\x02\r\n\s]", "", cam["suffix"])
         e = len(data) - len(suffix)
 
-    data = data[s:e]
+    barcode = data[s:e]
 
-    if(data in package2chute):
+    if(barcode in package2chute):
 
-        dst_ip = package2chute[data][0]
+        dst_ip = package2chute[barcode][0]
 
-        sortResponse['payload']['stationId'] = cam["inductions"][dst_ip][0]
+        induction = sortResponse['payload']['stationId'] = cam["inductions"][dst_ip]
 
-        if (len(cam["inductions"][dst_ip]) < 2 or cam["inductions"][dst_ip][1] == ''):
-            print("No robot at induction: ", dst_ip, cam["inductions"][dst_ip][0], "\n")
+        k = (dst_ip, induction)
+
+        if (k not in induction_bot):
+            print("No robot at induction: ", k, "\n")
         else:
-            sortResponse['payload']['robotId'] = cam["inductions"][dst_ip][1]
-            if (mode == 'sort'):
-                sortResponse['payload']['destinationId'] = package2chute[data][1]
-            else:
-                sortResponse['payload']['destinationId'] = random.choice(IP2chutes[dst_ip])
+            sortResponse['payload']['robotId'] = induction_bot[k]
+            # if (mode == 'sort'):
+            sortResponse['payload']['destinationId'] = package2chute[barcode][1]
+            # else:
+            #     sortResponse['payload']['destinationId'] = random.choice(IP2chutes[dst_ip])
 
-            print(sortResponse)
+            print(barcode, dst_ip, sortResponse['payload']['stationId'], sortResponse['payload']['robotId'], '-->', sortResponse['payload']['destinationId'])
 
             asyncio.run(send_websocket_message(sortResponse, ws_clients[dst_ip]))
 
-            cam["inductions"][dst_ip][1] = ''
+            del induction_bot[k]
+
     else:
-        print("Unknown package ID scaned from Camera:", data)
+        print("Unknown package ID scaned from Camera:", barcode)
         print(package2chute)
 
 
