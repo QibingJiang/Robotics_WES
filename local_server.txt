@@ -1,7 +1,8 @@
 {
-    "ip": "192.168.12.116",
+    "ip": "10.62.240.235",
     "tcp_port": 9004,
     "http_port": 8080,
     "web_socket_port": 9765,
+    "ws_broad": 10253,
     "hand_scanner_port": 3355
 }

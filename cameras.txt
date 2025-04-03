@@ -1,14 +1,11 @@
 {
-    "cams": [
-        {
-            "camIP": "192.168.12.116",
-            "port": 2111,
-            "prefix": "04mm\t",
-            "suffix": "",
+    "Description":"The following IP address is the one in Camera",
+    "192.168.12.116":{
+        "prefix": "",
+        "suffix": "",
+            "Description":"The following IP address is the one in RCS computer",
             "inductions": {
-                "192.168.12.116": "LABZLIFT_UL",
-                "192.168.12.103": "LABZLIFT_LL"
-            }
+            "192.168.12.116": "LABZLIFT_UL"
         }
-    ]
+    }
 }

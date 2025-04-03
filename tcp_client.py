@@ -9,7 +9,9 @@ def start_client():
 
     # host = '192.168.1.154'
     host = '127.0.0.1'
-    port = 9004
+    host = "192.168.136.253"
+    host = "192.168.12.116"
+    port = 2111
 
 
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

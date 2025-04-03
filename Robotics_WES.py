@@ -33,27 +33,20 @@ cam_config = file_1.read()
 cams = json.loads(cam_config)
 
 ip_cam = {}
-induction_cam = {}
+# induction_cam = {}
 induction_bot = {}
-# for cam in cams["cams"]:
-#     ip_cam[(cam["camIP"], cam["port"])] = cam
+
+cam_ips = cams.keys()
+
+# for cam_ip in cam_ips:
+#     ip_cam[cam_ip] = cams[cam_ip]
 #
-#     inductions = cam["inductions"]
-#     inductions_IPs = inductions.keys()
-#     for IP in inductions_IPs:
-#         inductions[IP].append('')
-#         induction_cam[(IP, inductions[IP][0])] = cam
-
-for cam in cams["cams"]:
-    ip_cam[cam["camIP"]] = cam
-
-    inductions = cam["inductions"]
-    for IP in inductions.keys():
-        # inductions[IP].append('')
-        k = (IP, inductions[IP])
-        if(k not in induction_cam):
-            induction_cam[k] = []
-        induction_cam[k].append(cam)
+#     inductions = cams[cam_ip]["inductions"]
+#     for IP in inductions.keys():
+#         k = (IP, inductions[IP])
+#         if(k not in induction_cam):
+#             induction_cam[k] = []
+#         induction_cam[k].append(cam_ip)
 
 
 
@@ -111,7 +104,7 @@ class MyHTTPRequestHandler(BaseHTTPRequestHandler):
                 ],
                 "iss": "http://www.tompksinsinc.com",
                 "iat": 1714926400,
-                "exp": 1735195000
+                "exp": 4735008000
             }
 
             # Encode the payload into a JWT
@@ -133,15 +126,20 @@ class MyHTTPRequestHandler(BaseHTTPRequestHandler):
 
             if(data['messageCode'] == 'ROBOTSTATUSUPDATE'):
 
-                if((client_ip, data['currentLocationId']) in induction_cam):
-                    # cam = induction_cam[(client_ip, data['currentLocationId'])]
-                    # assert cam["inductions"][client_ip][0] == data['currentLocationId']
-                    # cam["inductions"][client_ip][1] = data['robotId']
-                    k = (client_ip, data['currentLocationId'])
-                    induction_bot[k] = data['robotId']
+                # if((client_ip, data['currentLocationId']) in induction_cam):
+                k = str((client_ip, data['currentLocationId']))
+                if(k in induction_bot):
+                    induction_bot[k][0] = data['robotId']
                 else:
-                    # print("No camera is specified for ", client_ip, data['currentLocationId'])
-                    pass
+                #    induction_bot[k] = ['','']
+                    induction_bot[k] = [data['robotId'],'']
+                    print("I add this line on 02182025, testing")
+                    print(data)
+                    print(k, data['robotId'])
+                
+                # else:
+                #     # print("No camera is specified for ", client_ip, data['currentLocationId'])
+                #     pass
 
         else:
             print("get unknown message:", data)
@@ -160,6 +158,8 @@ async def echo(websocket):
     if(client_ip == '::1'):
         client_ip = '127.0.0.1'
 
+    local_ip, local_port = websocket.local_address
+
     ws_clients[client_ip] = websocket
     print(f"Websocket Client {client_ip} connected.")
 
@@ -169,7 +169,7 @@ async def echo(websocket):
             # await websocket.send(message)
 
     except Exception as e:
-        print(f"WebSocket error: {e}")
+        print(f"WebSocket error: {e} local:{local_ip} {local_port}, remote:{client_ip}")
         # websocket.close
     finally:
         # Remove the client from the dictionary and close the WebSocket connection
@@ -178,23 +178,69 @@ async def echo(websocket):
         await websocket.close()
         print(f"WebSocket Client {client_ip} disconnected.")
 
+async def listen_for_messages(websocket):
+    async for message in websocket:
+        print(f"Received from server: {message}")
+        data = json.loads(message.decode('utf-8'))
+        port = 0
+        if('port' in cams[data["IP"]]):
+            port = cams[data["IP"]]["port"]
+        print(data["code"], data["IP"], port)
+        await src2dst(data["code"], data["IP"], port, IsCamera=False)
+
+async def broad(websocket):
+    # print("one websocket get connected.", websocket)
+
+    client_ip = websocket.remote_address[0]
+    if(client_ip == '::1'):
+        client_ip = '127.0.0.1'
+
+    local_ip, local_port = websocket.local_address
+
+    print(f"Websocket Client {client_ip} connected.")
+
+    asyncio.create_task(listen_for_messages(websocket))
+
+    try:
+        while(True):
+            data = {
+                'cams':cams,
+                'induction_bot':induction_bot
+            }
+            # print(data)
+            # print(json.dumps(data).encode())
+            await websocket.send(json.dumps(data).encode())
+            await asyncio.sleep(0.5)
+
+            # message = await asyncio.wait_for(websocket.recv(), timeout=0.5)
+            # print(f"Received from server: {message}")
 
 
-async def start_websocket_server(IP, port):
-    async with websockets.serve(echo, IP, port) as ws_sever:
+
+    except Exception as e:
+        print(f"WebSocket error: {e} local:{local_ip} {local_port}, remote:{client_ip}")
+        # websocket.close
+    finally:
+        await websocket.close()
+        print(f"WebSocket Client {client_ip} disconnected.")
+
+
+async def start_websocket_server(IP, port, function):
+    async with websockets.serve(function, IP, port) as ws_sever:
         # print("Web socket server ", IP, "listening at ", port)
-        print(f"Web socket server listening on {IP}:{port}")
+        print(f"Web socket server listening on {IP}:{port} {function.__name__} \n")
 
         await asyncio.Future()  # Run forever
 
 # Function to start the WebSocket server in a separate asyncio event loop
-def start_websocket_server_in_thread(IP, port):
+def start_websocket_server_in_thread(IP, port, function):
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    loop.run_until_complete(start_websocket_server(IP, port))
+    loop.run_until_complete(start_websocket_server(IP, port, function))
     loop.run_forever()
 
 async def send_websocket_message(message, websocket):
+    print(message)
     try:
         await websocket.send(json.dumps(message).encode())
     except Exception as e:
@@ -219,13 +265,18 @@ def handle_TCP_client(conn, addr):
             conn.close()
             break
 
+        except Exception as e: # Maybe the TCP client is closed.
+            print(e)
+            conn.close()
+            break
+
         data = data.decode()
         data = re.sub(r"[\x02\r\n\s]", "", data)
         # data = data[5:-3]
         print(f"Received from {addr}: {data}")
         # conn.sendall(data)  # Echo the received data back to the client
 
-        src2dst(data, client_ip, client_port)
+        asyncio.run(src2dst(data, client_ip, client_port))
 
 
 def start_TCP_server(HOST, PORT):
@@ -305,7 +356,69 @@ def start_TCP_server(HOST, PORT):
 #         print("Unknown package ID scaned from Camera:", data)
 #         print(package2chute)
 
-def src2dst(data, cam_ip, cam_port):
+# def src2dst(data, cam_ip, cam_port):
+#     sortResponse = {
+#         "status": "success",
+#         "statusCode": 0,
+#         "statusDesc": "Message Processed Successfully",
+#         "messageNumber": "1",
+#         "payload": {
+#             "messageCode": "SORTRESPONSE",
+#             "stationId": "",  # Station2U
+#             "robotId": "",  # "1"
+#             "systemAction": 1,
+#             "userAction": "",
+#             "userMessage": "",
+#             "destinationId": "",
+#             "productCode": "750000007515",
+#             "sku": ""
+#         }
+#     }
+#
+#     # cam = ip_cam[(cam_ip, cam_port)]
+#     cam = ip_cam[cam_ip]
+#
+#     s = 0
+#     e = len(data)
+#
+#     if("prefix" in cam):
+#         prefix = re.sub(r"[\x02\r\n\s]", "", cam["prefix"])
+#         s = len(prefix)
+#
+#     if("suffix" in cam):
+#         suffix = re.sub(r"[\x02\r\n\s]", "", cam["suffix"])
+#         e = len(data) - len(suffix)
+#
+#     barcode = data[s:e]
+#
+#     if(barcode in package2chute):
+#
+#         dst_ip = package2chute[barcode][0]
+#
+#         induction = sortResponse['payload']['stationId'] = cam["inductions"][dst_ip]
+#
+#         k = (dst_ip, induction)
+#
+#         if (k not in induction_bot):
+#             print("No robot at induction: ", k, "\n")
+#         else:
+#             sortResponse['payload']['robotId'] = induction_bot[k]
+#             # if (mode == 'sort'):
+#             sortResponse['payload']['destinationId'] = package2chute[barcode][1]
+#             # else:
+#             #     sortResponse['payload']['destinationId'] = random.choice(IP2chutes[dst_ip])
+#
+#             print(barcode, dst_ip, sortResponse['payload']['stationId'], sortResponse['payload']['robotId'], '-->', sortResponse['payload']['destinationId'])
+#
+#             asyncio.run(send_websocket_message(sortResponse, ws_clients[dst_ip]))
+#
+#             del induction_bot[k]
+#
+#     else:
+#         print("Unknown package ID scaned from Camera:", barcode)
+#         print(package2chute)
+
+async def src2dst(data, cam_ip, cam_port, IsCamera = True):
     sortResponse = {
         "status": "success",
         "statusCode": 0,
@@ -325,44 +438,53 @@ def src2dst(data, cam_ip, cam_port):
     }
 
     # cam = ip_cam[(cam_ip, cam_port)]
-    cam = ip_cam[cam_ip]
+    # cam = cams[cam_ip]
 
     s = 0
     e = len(data)
 
-    if("prefix" in cam):
-        prefix = re.sub(r"[\x02\r\n\s]", "", cam["prefix"])
-        s = len(prefix)
 
-    if("suffix" in cam):
-        suffix = re.sub(r"[\x02\r\n\s]", "", cam["suffix"])
-        e = len(data) - len(suffix)
+    if(IsCamera):
+        if("prefix" in cams[cam_ip]):
+            prefix = re.sub(r"[\x02\r\n\s]", "", cams[cam_ip]["prefix"])
+            s = len(prefix)
+
+        if("suffix" in cams[cam_ip]):
+            suffix = re.sub(r"[\x02\r\n\s]", "", cams[cam_ip]["suffix"])
+            e = len(data) - len(suffix)
 
     barcode = data[s:e]
+
+    cams[cam_ip]["code"] = barcode
 
     if(barcode in package2chute):
 
         dst_ip = package2chute[barcode][0]
 
-        induction = sortResponse['payload']['stationId'] = cam["inductions"][dst_ip]
+        induction = sortResponse['payload']['stationId'] = cams[cam_ip]["inductions"][dst_ip]
 
-        k = (dst_ip, induction)
+        k = str((dst_ip, induction))
 
-        if (k not in induction_bot):
+        if (k not in induction_bot or induction_bot[k][0] == ''):
             print("No robot at induction: ", k, "\n")
         else:
-            sortResponse['payload']['robotId'] = induction_bot[k]
-            # if (mode == 'sort'):
+            sortResponse['payload']['robotId'] = induction_bot[k][0]
             sortResponse['payload']['destinationId'] = package2chute[barcode][1]
+            sortResponse['payload']['productCode'] = barcode
+
+            # print(barcode, dst_ip, sortResponse['payload']['stationId'], sortResponse['payload']['robotId'], '-->', sortResponse['payload']['destinationId'])
+
+            # if(IsCamera):
+            #     asyncio.run(send_websocket_message(sortResponse, ws_clients[dst_ip]))
             # else:
-            #     sortResponse['payload']['destinationId'] = random.choice(IP2chutes[dst_ip])
+            #     send_websocket_message(sortResponse, ws_clients[dst_ip])
 
-            print(barcode, dst_ip, sortResponse['payload']['stationId'], sortResponse['payload']['robotId'], '-->', sortResponse['payload']['destinationId'])
+            print(dst_ip)
+            await send_websocket_message(sortResponse, ws_clients[dst_ip])
 
-            asyncio.run(send_websocket_message(sortResponse, ws_clients[dst_ip]))
-
-            del induction_bot[k]
-
+            induction_bot[k][0] = ''
+            induction_bot[k][1] = sortResponse['payload']['robotId'] + '(' + barcode + ')-->' + sortResponse['payload']['destinationId']
+            print(induction_bot[k][1])
     else:
         print("Unknown package ID scaned from Camera:", barcode)
         print(package2chute)
@@ -375,7 +497,7 @@ def tcp_client(server_host = '127.0.0.1', server_port = 9004):
                 client_socket.connect((server_host, server_port))
                 print(f"Connected to TCP server at {server_host}:{server_port}\n")
 
-                client_socket.settimeout(KEEP_ALIVE_INTERVAL)
+                client_socket.settimeout(600)
                 while True:
                     try:
                         # Attempt to receive data
@@ -386,7 +508,7 @@ def tcp_client(server_host = '127.0.0.1', server_port = 9004):
                         data = data.decode()
                         data = re.sub(r"[\x02\r\n\s]", "", data)
                         print(f"Received from {server_host} {server_port}: {data}\n")
-                        src2dst(data, server_host, server_port)
+                        asyncio.run(src2dst(data, server_host, server_port))
 
                     except socket.timeout:
                         print("TCP client keeps receiving data")
@@ -405,56 +527,60 @@ def tcp_client(server_host = '127.0.0.1', server_port = 9004):
 
 
 def main():
-    while True:
-        try:
-            # Start HTTP server in a separate thread
+    # while True:
+    try:
+        # Start HTTP server in a separate thread
 
-            # host = '192.168.0.179'
-            host = '192.168.12.116'
-            # host = '192.168.137.103'
-            port = 8080
+        # host = '192.168.0.179'
+        host = '192.168.12.116'
+        # host = '192.168.137.103'
+        port = 8080
 
-            file_3 = open('local_server.txt', 'r')
-            server_config = json.loads(file_3.read())
+        file_3 = open('local_server.txt', 'r')
+        server_config = json.loads(file_3.read())
 
-            http_thread = threading.Thread(target=start_http_server, args=(server_config['ip'], server_config['http_port']))
-            http_thread.start()
+        http_thread = threading.Thread(target=start_http_server, args=(server_config['ip'], server_config['http_port']))
+        http_thread.start()
 
-            # Start WebSocket server in a separate thread
-            # asyncio.run(start_websocket_server())
+        # Start WebSocket server in a separate thread
+        # asyncio.run(start_websocket_server())
 
-            # host = '192.168.12.116'
-            port = 9765
+        # host = '192.168.12.116'
+        port = 9765
 
-            ws_thread = threading.Thread(target=start_websocket_server_in_thread, args=(server_config['ip'], server_config['web_socket_port']))
-            ws_thread.start()
+        ws_thread = threading.Thread(target=start_websocket_server_in_thread, args=(server_config['ip'], server_config['web_socket_port'], echo))
+        ws_thread.start()
 
-            # TCP_server_thread = threading.Thread(target=start_TCP_server, args=(server_config['ip'], server_config['tcp_port']))
-            # TCP_server_thread.start()
-            TCP_server_thread = None
+        ws_broad = threading.Thread(target=start_websocket_server_in_thread, args=(server_config['ip'], server_config['ws_broad'], broad))
+        ws_broad.start()
 
-            for cam in cams['cams']:
-                if 'port' in cam: #Camera works as a TCP server.
-                    # print("Try to connect Camera TCP server: ", cam['camIP'], cam['port'])
-                    TCP_client_thread = threading.Thread(target=tcp_client, args=(cam['camIP'], cam['port']))
-                    TCP_client_thread.start()
-                else: # Camera works as a TCP client.
-                    if(TCP_server_thread == None):
-                        TCP_server_thread = threading.Thread(target=start_TCP_server, args=(server_config['ip'], server_config['tcp_port']))
-                        TCP_server_thread.start()
 
-            # Optionally, join threads to wait for completion
-            # http_thread.join()
-            # tcp_client_thread.join()
+        # TCP_server_thread = threading.Thread(target=start_TCP_server, args=(server_config['ip'], server_config['tcp_port']))
+        # TCP_server_thread.start()
+        TCP_server_thread = None
 
-            while(True):
-                print("Time Stamp: ", time.strftime("%H:%M:%S", time.localtime()))
-                time.sleep(10)
+        cam_ips = cams.keys()
+        for cam_ip in cam_ips:
+            if 'port' in cams[cam_ip]: #Camera works as a TCP server.
+                TCP_client_thread = threading.Thread(target=tcp_client, args=(cam_ip, cams[cam_ip]['port']))
+                TCP_client_thread.start()
+            else: # Camera works as a TCP client.
+                if(TCP_server_thread == None):
+                    TCP_server_thread = threading.Thread(target=start_TCP_server, args=(server_config['ip'], server_config['tcp_port']))
+                    TCP_server_thread.start()
 
-        except Exception as e:
-            print("Error: ", e)
-            print("Restart Http server, Web socket, and TCP server ")
-            time.sleep(1)
+        # Optionally, join threads to wait for completion
+        # http_thread.join()
+        # tcp_client_thread.join()
+
+        while(True):
+            print("Time Stamp: ", time.strftime("%H:%M:%S", time.localtime()))
+            time.sleep(10)
+
+    except Exception as e:
+        print("Error: ", e)
+        # print("Restart Http server, Web socket, and TCP server ")
+        # time.sleep(1)
 
 if __name__ == "__main__":
     main()
